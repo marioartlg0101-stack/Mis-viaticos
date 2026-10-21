@@ -1,5 +1,5 @@
 // Cambia la versión cada vez que subas cambios, para que los celulares tomen la nueva versión.
-const VERSION = 'viaticos-v2';
+const VERSION = 'viaticos-v3';
 const ARCHIVOS = [
   './',
   './index.html',

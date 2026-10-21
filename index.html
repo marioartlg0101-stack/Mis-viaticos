@@ -192,6 +192,18 @@ body.menu .drawer{transform:none}
   padding:12px 18px;border-radius:12px;font-weight:600;opacity:0;transition:.25s;z-index:30;pointer-events:none;max-width:88vw;text-align:center}
 .toast.show{opacity:1;transform:translate(-50%,0)}
 
+/* ---------- Confirmación propia ---------- */
+.modal{position:fixed;inset:0;z-index:40;display:grid;place-items:center;padding:24px;background:rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:opacity .2s}
+.modal.show{opacity:1;pointer-events:auto}
+.modal-box{width:min(100%,360px);background:var(--surface);border-radius:20px;padding:26px 20px 18px;box-shadow:0 20px 50px -10px rgba(0,0,0,.5);transform:translateY(12px) scale(.97);transition:transform .2s;text-align:center}
+.modal.show .modal-box{transform:none}
+.modal-ic{font-size:38px;line-height:1;margin-bottom:12px}
+.modal-box h3{font-size:21px;font-weight:700}
+.modal-box p{color:var(--muted);margin:8px 0 0}
+.modal-acts{display:flex;gap:10px;margin-top:22px}
+.modal-acts .btn{flex:1}
+.btn.cancel{background:var(--surface2);color:var(--text)}
+.btn.danger{background:var(--danger);color:#fff}
 @media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition:none!important}}
 @media print{
   body{background:#fff;color:#000}
@@ -256,6 +268,15 @@ body.menu .drawer{transform:none}
   <button class="mi out" data-go="logout"><span class="ic">↩︎</span>Cambiar de usuario</button>
 </nav>
 
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="modal-box">
+    <div class="modal-ic" id="mIc"></div>
+    <h3 id="mTitle"></h3>
+    <p id="mText"></p>
+    <div class="modal-acts"><button class="btn cancel" id="mNo">Cancelar</button><button class="btn save" id="mYes">Aceptar</button></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -279,6 +300,17 @@ function fDay(d){return cap(dObj(d).toLocaleDateString('es-MX',{weekday:'long'})
 function fDate(d){return dObj(d).toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'});}
 function fShort(d){return dObj(d).toLocaleDateString('es-MX',{day:'numeric',month:'short'});}
 function toast(t){const el=$('#toast');el.textContent=t;el.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>el.classList.remove('show'),2000);}
+function ask(title,text,{ok='Aceptar',icon='',danger=false}={}){
+  return new Promise(res=>{
+    const m=$('#modal'),y=$('#mYes'),n=$('#mNo');
+    $('#mIc').textContent=icon;$('#mIc').hidden=!icon;
+    $('#mTitle').textContent=title;$('#mText').textContent=text||'';$('#mText').hidden=!text;
+    y.textContent=ok;y.className='btn '+(danger?'danger':'save');
+    m.classList.add('show');setTimeout(()=>y.focus(),50);
+    const done=v=>{m.classList.remove('show');y.onclick=n.onclick=m.onclick=null;res(v);};
+    y.onclick=()=>done(true);n.onclick=()=>done(false);m.onclick=e=>{if(e.target===m)done(false);};
+  });
+}
 function show(id){['login','welcome','app','report'].forEach(x=>$('#'+x).hidden=(x!==id));}
 
 /* ---------- Totales ---------- */
@@ -382,13 +414,13 @@ $('#main').addEventListener('input',e=>{
   else{S.trip.extras[d][i][f]=inp.value;card.querySelector('[data-sub]').textContent=money(extrasDayTotal(S.trip.extras[d]));$('#sumAmt').textContent=money(totalExtras());}
   save();
 });
-$('#main').addEventListener('click',e=>{
+$('#main').addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]');if(!b)return;
   const card=b.closest('.stub');const d=card&&card.dataset.date;const act=b.dataset.act;
   if(act==='toggle'){setOpen(openKey()===d?null:d);save();renderApp();if(openKey()===d)scrollToCard(d);}
   else if(act==='save'){setOpen(null);save();renderApp();toast('Gastos guardados');}
   else if(act==='delday'){
-    if(!confirm(`¿Eliminar los gastos del ${fDate(d)}?`))return;
+    if(!(await ask('¿Eliminar este día?',`Se borrarán los gastos del ${fDate(d)}.`,{ok:'Eliminar',icon:'🗑️',danger:true})))return;
     if(S.view==='meals')delete S.trip.days[d];else delete S.trip.extras[d];
     save();renderApp();toast('Día eliminado');
   }
@@ -425,18 +457,18 @@ function closeMenu(){document.body.classList.remove('menu');}
 $('#menuBtn').onclick=openMenu;
 $('#scrim').onclick=closeMenu;
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
-document.querySelectorAll('.mi[data-go]').forEach(b=>b.onclick=()=>{
+document.querySelectorAll('.mi[data-go]').forEach(b=>b.onclick=async()=>{
   const g=b.dataset.go;closeMenu();
   if(g==='meals'||g==='extras'){S.view=g;save();renderApp();window.scrollTo(0,0);}
   else if(g==='finish'){finishTrip();}
-  else if(g==='logout'){if(confirm('¿Cambiar de usuario? Tus gastos se conservan en este teléfono.')){S.user='';save();$('#nameIn').value='';show('login');}}
+  else if(g==='logout'){if(await ask('¿Cambiar de usuario?','Tus gastos se conservan en este teléfono.',{ok:'Cambiar',icon:'👤'})){S.user='';save();$('#nameIn').value='';show('login');}}
 });
 
 /* ---------- Finalizar y reporte ---------- */
-function finishTrip(){
+async function finishTrip(){
   if(!S.trip)return;
   if(!Object.keys(S.trip.days).length&&!Object.keys(S.trip.extras).length){toast('Aún no registras ningún día');return;}
-  if(!confirm('¿Finalizar el viaje y generar el reporte?'))return;
+  if(!(await ask('¿Está seguro de finalizar el viaje?','Se generará el reporte con todos los gastos registrados.',{ok:'Sí, finalizar',icon:'🏁'})))return;
   S.trip.finished=true;S.trip.end=Date.now();S.repTab='meals';save();renderReport();
 }
 function filledMeals(day){return day.meals.filter(m=>num(m.monto)>0||m.lugar.trim()||m.metodo.trim());}
@@ -488,7 +520,7 @@ function renderReport(){
   document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{S.repTab=b.dataset.tab;save();renderReport();});
   $('#printBtn').onclick=()=>window.print();
   $('#editBtn').onclick=()=>{S.trip.finished=false;save();renderApp();};
-  $('#newBtn').onclick=()=>{if(confirm('Se borrará este viaje del teléfono. Comparte o guarda el reporte antes. ¿Continuar?')){S.trip=null;S.view='meals';save();renderApp();}};
+  $('#newBtn').onclick=async()=>{if(await ask('¿Empezar un nuevo viaje?','Se borrará este viaje del teléfono. Comparte o guarda el reporte antes.',{ok:'Borrar y empezar',icon:'⚠️',danger:true})){S.trip=null;S.view='meals';save();renderApp();}};
   $('#shareBtn').onclick=shareReport;
   window.scrollTo(0,0);
 }
